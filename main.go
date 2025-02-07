@@ -1,16 +1,16 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"regexp"
 
 	"github.com/gin-gonic/gin"
-	"github.com/quic-go/quic-go/http3"
+	"github.com/zishang520/engine.io/v2/engine"
 	"github.com/zishang520/engine.io/v2/types"
 	"github.com/zishang520/engine.io/v2/utils"
+	"github.com/zishang520/engine.io/v2/webtransport"
 	"github.com/zishang520/socket.io/v2/socket"
 )
 
@@ -44,15 +44,33 @@ func main() {
 
 	SetupSocketHandler(server)
 
-	if _, err := os.Stat("./cert/cert.pem"); err == nil {
-		log.Println(fmt.Sprint("Starting HTTP/3 server on :443"))
-		err = http3.ListenAndServeTLS(":443", "./cert/cert.pem", "./cert/cert.key", r.Handler())
-		if err != nil {
-			log.Fatalf("HTTP/3 server failed: %v", err)
+	// WebTransport start
+	// WebTransport uses udp, so you need to enable the new service.
+	customServer := types.NewWebServer(nil)
+
+	// A certificate is required and cannot be a self-signed certificate.
+	wts := customServer.ListenWebTransportTLS(":443", "./cert/cert.pem", "./cert/cert.key", nil, nil)
+
+	// if _, err := os.Stat("./cert/cert.pem"); err == nil {
+	//  wts := customServer.ListenWebTransportTLS(":443", "./cert/cert.pem", "./cert/cert.key", nil, nil)
+	// } else {
+	// 	wts := customServer.Listen(":8080", nil)
+	// }
+
+	// Here is the core logic of the WebTransport handshake.
+	customServer.HandleFunc(server.Path()+"/", func(w http.ResponseWriter, r *http.Request) {
+		if webtransport.IsWebTransportUpgrade(r) {
+			// You need to call server.ServeHandler(nil) before this, otherwise you cannot get the Engine instance.
+			server.Engine().(engine.Server).OnWebTransportSession(types.NewHttpContext(w, r), wts)
+		} else {
+			customServer.DefaultHandler.ServeHTTP(w, r)
 		}
-		// r.RunTLS(":443", "./cert/cert.pem", "./cert/cert.key")
+	})
+	// WebTransport end
+
+	if _, err := os.Stat("./cert/cert.pem"); err == nil {
+		r.RunTLS(":443", "./cert/cert.pem", "./cert/cert.key")
 	} else {
-		log.Println(fmt.Sprint("Starting HTTP/2 server on :80"))
 		r.Run()
 	}
 }
