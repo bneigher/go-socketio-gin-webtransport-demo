@@ -1,7 +1,7 @@
 # Socketio / Gin / WebTransport Example
 
 ## Requirements:
-1. have mkcert installed (brew, ect..)
+1. have openssl installed (brew, ect..)
 2. run the local cert generating utility script
 
 ```sh
